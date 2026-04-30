@@ -1,0 +1,188 @@
+{
+  "best_model": "logreg",
+  "n_train": 2400,
+  "n_test": 600,
+  "approval_rate_train": 0.5975,
+  "approval_rate_test": 0.5966666666666667,
+  "models": {
+    "logreg": {
+      "metrics": {
+        "accuracy": 0.76,
+        "precision": 0.786096256684492,
+        "recall": 0.8212290502793296,
+        "f1": 0.8032786885245902,
+        "roc_auc": 0.8454568539637102,
+        "pr_auc": 0.8894783031215319,
+        "brier": 0.15618076131980338,
+        "threshold": 0.5
+      },
+      "params": null,
+      "cv_auc": null
+    },
+    "random_forest": {
+      "metrics": {
+        "accuracy": 0.76,
+        "precision": 0.7715736040609137,
+        "recall": 0.8491620111731844,
+        "f1": 0.8085106382978723,
+        "roc_auc": 0.8358534558382198,
+        "pr_auc": 0.879925179289886,
+        "brier": 0.16044186869584587,
+        "threshold": 0.5
+      },
+      "params": null,
+      "cv_auc": null
+    },
+    "xgboost": {
+      "metrics": {
+        "accuracy": 0.755,
+        "precision": 0.7813333333333333,
+        "recall": 0.8184357541899442,
+        "f1": 0.7994542974079127,
+        "roc_auc": 0.8213213906459208,
+        "pr_auc": 0.8654945787454484,
+        "brier": 0.17307284474372864,
+        "threshold": 0.5
+      },
+      "params": null,
+      "cv_auc": null
+    },
+    "lightgbm": {
+      "metrics": {
+        "accuracy": 0.7416666666666667,
+        "precision": 0.7678100263852242,
+        "recall": 0.8128491620111732,
+        "f1": 0.7896879240162822,
+        "roc_auc": 0.8135878849439032,
+        "pr_auc": 0.8573554735202313,
+        "brier": 0.18119351156735103,
+        "threshold": 0.5
+      },
+      "params": null,
+      "cv_auc": null
+    },
+    "stacking": {
+      "metrics": {
+        "accuracy": 0.7616666666666667,
+        "precision": 0.7763496143958869,
+        "recall": 0.8435754189944135,
+        "f1": 0.8085676037483266,
+        "roc_auc": 0.8354725518260306,
+        "pr_auc": 0.8809822624922186,
+        "brier": 0.16235301561689647,
+        "threshold": 0.5
+      },
+      "params": null,
+      "cv_auc": null
+    }
+  },
+  "optimal_threshold": 0.18,
+  "metrics_at_optimal_threshold": {
+    "accuracy": 0.74,
+    "precision": 0.7028112449799196,
+    "recall": 0.9776536312849162,
+    "f1": 0.8177570093457944,
+    "roc_auc": 0.8454568539637102,
+    "pr_auc": 0.8894783031215319,
+    "brier": 0.15618076131980338,
+    "threshold": 0.18
+  },
+  "mcnemar_pairwise": [
+    {
+      "model_a": "logreg",
+      "model_b": "random_forest",
+      "chi2": 0.022727272727272728,
+      "p_value": 0.8801684549067255
+    },
+    {
+      "model_a": "logreg",
+      "model_b": "xgboost",
+      "chi2": 0.08163265306122448,
+      "p_value": 0.7750969621959847
+    },
+    {
+      "model_a": "logreg",
+      "model_b": "lightgbm",
+      "chi2": 1.4492753623188406,
+      "p_value": 0.2286442623410767
+    },
+    {
+      "model_a": "logreg",
+      "model_b": "stacking",
+      "chi2": 0.0,
+      "p_value": 1.0
+    },
+    {
+      "model_a": "random_forest",
+      "model_b": "xgboost",
+      "chi2": 0.0975609756097561,
+      "p_value": 0.7547764265871045
+    },
+    {
+      "model_a": "random_forest",
+      "model_b": "lightgbm",
+      "chi2": 1.7543859649122806,
+      "p_value": 0.18532630419857932
+    },
+    {
+      "model_a": "random_forest",
+      "model_b": "stacking",
+      "chi2": 0.0,
+      "p_value": 1.0
+    },
+    {
+      "model_a": "xgboost",
+      "model_b": "lightgbm",
+      "chi2": 1.2894736842105263,
+      "p_value": 0.2561449666035265
+    },
+    {
+      "model_a": "xgboost",
+      "model_b": "stacking",
+      "chi2": 0.4090909090909091,
+      "p_value": 0.5224312849615643
+    },
+    {
+      "model_a": "lightgbm",
+      "model_b": "stacking",
+      "chi2": 2.630434782608696,
+      "p_value": 0.10483300285833874
+    }
+  ],
+  "feature_columns": [
+    "annual_income",
+    "loan_amount",
+    "credit_score",
+    "employment_years",
+    "dti_ratio",
+    "age",
+    "num_credit_lines",
+    "savings_balance",
+    "loan_purpose",
+    "home_ownership",
+    "education",
+    "loan_to_income",
+    "savings_to_loan"
+  ],
+  "categorical_features": [
+    "loan_purpose",
+    "home_ownership",
+    "education"
+  ],
+  "numerical_features": [
+    "annual_income",
+    "loan_amount",
+    "credit_score",
+    "employment_years",
+    "dti_ratio",
+    "age",
+    "num_credit_lines",
+    "savings_balance"
+  ],
+  "engineered_features": [
+    "loan_to_income",
+    "savings_to_loan"
+  ],
+  "trained_via": "quick_train",
+  "training_seconds": 46.68766212463379
+}

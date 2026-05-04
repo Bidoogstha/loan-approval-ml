@@ -21,7 +21,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.data_generation import (  # noqa: E402
+from src.data_loader import (  # noqa: E402 
     CATEGORICAL_FEATURES,
     ENGINEERED_FEATURES,
     NUMERICAL_FEATURES,
@@ -476,7 +476,7 @@ st.markdown(
 # ASSET LOADING
 # ══════════════════════════════════════════════════════════════════════════
 MODELS_DIR = ROOT / "models"
-DATA_PATH = ROOT / "data" / "loan_data.csv"
+DATA_PATH = ROOT / "data" / "lending_club_sample.csv"
 
 
 @st.cache_resource
@@ -487,7 +487,15 @@ def load_artifacts():
     all_pipes = joblib.load(MODELS_DIR / "all_pipelines.pkl")
     with open(MODELS_DIR / "metrics.json") as f:
         metrics = json.load(f)
-    df = pd.read_csv(DATA_PATH) if DATA_PATH.exists() else None
+    if DATA_PATH.exists():
+        df = pd.read_csv(DATA_PATH)
+        # The Data tab was originally written for synthetic data labeled "approved".
+        # Lending Club has the inverse: "defaulted". A loan that did NOT default is
+        # equivalent to a successful (approved-and-repaid) loan — so we add an
+        # `approved` shim column to keep all existing visualizations working.
+        df["approved"] = 1 - df["defaulted"]
+    else:
+        df = None
     return {"best_pipe": best_pipe, "all_pipes": all_pipes, "metrics": metrics, "df": df}
 
 
@@ -566,54 +574,81 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-col_fin, col_credit, col_demo = st.columns(3, gap="large")
+col_loan, col_credit, col_borrower = st.columns(3, gap="large")
 
-with col_fin:
-    st.markdown("<div class='input-section-label'>💰 Financial</div>", unsafe_allow_html=True)
-    annual_income = st.slider("Annual income ($)", 15_000, 200_000, 65_000, step=1_000, format="$%d")
-    loan_amount = st.slider("Loan amount ($)", 5_000, 500_000, 80_000, step=1_000, format="$%d")
-    savings_balance = st.slider("Savings balance ($)", 0, 200_000, 12_000, step=500, format="$%d")
-    dti_ratio = st.slider("Debt-to-income ratio (%)", 1.0, 65.0, 28.0, step=0.5, format="%.1f%%")
+with col_loan:
+    st.markdown("<div class='input-section-label'>💰 Loan terms</div>", unsafe_allow_html=True)
+    loan_amnt = st.slider("Loan amount ($)", 1_000, 40_000, 15_000, step=500, format="$%d")
+    term_months = st.selectbox("Term", [36, 60], index=0, format_func=lambda x: f"{x} months")
+    int_rate = st.slider("Interest rate (%)", 5.0, 31.0, 13.0, step=0.25, format="%.2f%%")
+    grade = st.selectbox("LC risk grade", ["A", "B", "C", "D", "E", "F", "G"], index=2)
 
 with col_credit:
-    st.markdown("<div class='input-section-label'>📊 Credit & Employment</div>", unsafe_allow_html=True)
-    credit_score = st.slider("Credit score", 300, 850, 685, step=5)
-    employment_years = st.slider("Employment (years)", 0, 40, 5)
-    num_credit_lines = st.slider("Number of credit lines", 0, 25, 4)
+    st.markdown("<div class='input-section-label'>📊 Credit profile</div>", unsafe_allow_html=True)
+    fico_range_low = st.slider("FICO score (low end)", 660, 845, 695, step=5)
+    dti = st.slider("Debt-to-income (%)", 0.0, 50.0, 18.0, step=0.5, format="%.1f%%")
+    revol_util = st.slider("Revolving utilization (%)", 0.0, 150.0, 50.0, step=1.0, format="%.0f%%")
+    open_acc = st.slider("Open credit lines", 0, 40, 10)
+    total_acc = st.slider("Total credit lines (lifetime)", 1, 80, 25)
     use_optimal_thresh = st.toggle(
         "Use cost-optimal threshold",
         value=False,
         help=f"Default 0.50 vs. cost-optimal {optimal_thresh:.2f} (FN penalized 3× FP).",
     )
 
-with col_demo:
-    st.markdown("<div class='input-section-label'>👤 Demographics</div>", unsafe_allow_html=True)
-    age = st.slider("Age", 18, 75, 35)
-    education = st.selectbox("Education", ["high_school", "some_college", "bachelors", "graduate"], index=2)
-    home_ownership = st.selectbox("Home ownership", ["rent", "mortgage", "own", "other"], index=1)
-    loan_purpose = st.selectbox(
-        "Loan purpose",
-        ["debt_consolidation", "home_improvement", "major_purchase", "medical", "education", "other"],
+with col_borrower:
+    st.markdown("<div class='input-section-label'>👤 Borrower</div>", unsafe_allow_html=True)
+    annual_inc = st.slider("Annual income ($)", 15_000, 250_000, 65_000, step=1_000, format="$%d")
+    emp_length = st.selectbox(
+        "Employment length",
+        ["lt_1", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10_plus", "unknown"],
+        index=10,
+        format_func=lambda x: {"lt_1": "< 1 year", "10_plus": "10+ years", "unknown": "Not provided"}.get(x, f"{x} years"),
     )
+    home_ownership = st.selectbox("Home ownership", ["RENT", "MORTGAGE", "OWN", "OTHER"], index=1)
+    verification_status = st.selectbox(
+        "Income verification",
+        ["Verified", "Source Verified", "Not Verified"],
+        index=0,
+    )
+    purpose = st.selectbox(
+        "Loan purpose",
+        [
+            "debt_consolidation", "credit_card", "home_improvement", "major_purchase",
+            "medical", "small_business", "car", "vacation", "moving",
+            "house", "wedding", "renewable_energy", "educational", "other",
+        ],
+        index=0,
+    )
+
+# Auto-compute installment from loan amount, rate, and term using standard
+# amortization. Lending Club applicants don't choose this — it's derived.
+_r = (int_rate / 100) / 12
+_n = term_months
+installment = round(loan_amnt * _r / (1 - (1 + _r) ** -_n), 2) if _r > 0 else loan_amnt / _n
 
 st.markdown("</div>", unsafe_allow_html=True)
 
 
 def build_input_row():
     return pd.DataFrame([{
-        "annual_income": annual_income,
-        "loan_amount": loan_amount,
-        "credit_score": credit_score,
-        "employment_years": employment_years,
-        "dti_ratio": dti_ratio,
-        "age": age,
-        "num_credit_lines": num_credit_lines,
-        "savings_balance": savings_balance,
-        "loan_purpose": loan_purpose,
+        "loan_amnt": loan_amnt,
+        "term_months": float(term_months),
+        "int_rate": int_rate,
+        "installment": installment,
+        "annual_inc": annual_inc,
+        "dti": dti,
+        "fico_range_low": fico_range_low,
+        "open_acc": open_acc,
+        "revol_util": revol_util,
+        "total_acc": total_acc,
+        "grade": grade,
         "home_ownership": home_ownership,
-        "education": education,
-        "loan_to_income": round(loan_amount / annual_income, 3),
-        "savings_to_loan": round(savings_balance / loan_amount, 3) if loan_amount > 0 else 0,
+        "purpose": purpose,
+        "verification_status": verification_status,
+        "emp_length": emp_length,
+        "loan_to_income": round(loan_amnt / annual_inc, 4),
+        "installment_to_income": round((installment * 12) / annual_inc, 4),
     }])
 
 
@@ -691,40 +726,41 @@ with tab_predict:
     with right:
         st.markdown("<div class='section-h'><h3>Quick read on this applicant</h3></div>", unsafe_allow_html=True)
 
-        loan_to_income = loan_amount / annual_income
-        monthly_loan_payment = loan_amount * 0.006
-
+        loan_to_income = loan_amnt / annual_inc
+        installment_to_income = (installment * 12) / annual_inc
         flags = []
-        if credit_score < 620:
-            flags.append(("🚨", "bad", "Credit score below 620 — subprime range"))
-        elif credit_score >= 740:
-            flags.append(("✅", "good", "Excellent credit score (740+)"))
-        if dti_ratio > 43:
-            flags.append(("🚨", "bad", "DTI above 43% — Qualified Mortgage rule of thumb exceeded"))
-        elif dti_ratio < 28:
-            flags.append(("✅", "good", "Healthy DTI under 28%"))
-        if loan_to_income > 4:
-            flags.append(("🚨", "bad", f"Loan is {loan_to_income:.1f}× annual income — high"))
-        if employment_years < 2:
-            flags.append(("⚠️", "warn", "Less than 2 years employment — limited stability signal"))
-        if savings_balance >= loan_amount * 0.2:
-            flags.append(("✅", "good", "Savings ≥ 20% of loan — strong cushion"))
+        if fico_range_low < 660:
+            flags.append(("🚨", "bad", "FICO below 660 — subprime range"))
+        elif fico_range_low >= 740:
+            flags.append(("✅", "good", "Excellent FICO score (740+)"))
+        if dti > 35:
+            flags.append(("🚨", "bad", f"DTI of {dti:.1f}% — high debt burden"))
+        elif dti < 15:
+            flags.append(("✅", "good", "Healthy DTI under 15%"))
+        if revol_util > 80:
+            flags.append(("⚠️", "warn", f"Revolving utilization at {revol_util:.0f}% — credit-stressed"))
+        if loan_to_income > 0.4:
+            flags.append(("⚠️", "warn", f"Loan is {loan_to_income:.0%} of income — large relative to earnings"))
+        if installment_to_income > 0.20:
+            flags.append(("🚨", "bad", f"Annual payments {installment_to_income:.0%} of income — payment burden high"))
+        if grade in ("F", "G"):
+            flags.append(("🚨", "bad", f"Lending Club grade {grade} — highest-risk tier"))
+        if emp_length == "10_plus":
+            flags.append(("✅", "good", "10+ years employed — strong stability signal"))
+        elif emp_length == "unknown":
+            flags.append(("⚠️", "warn", "Employment length not provided"))
         if not flags:
             flags.append(("ℹ️", "warn", "No strong signals either way — model decides on the margins."))
-
         for ic, kind, msg in flags:
             st.markdown(
                 f"<div class='flag {kind}'><div class='flag-icon'>{ic}</div><div>{msg}</div></div>",
                 unsafe_allow_html=True,
             )
-
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
         c1, c2, c3 = st.columns(3)
         c1.metric("Loan-to-income", f"{loan_to_income:.2f}×")
-        c2.metric("Monthly payment", f"${monthly_loan_payment:,.0f}")
-        c3.metric("Savings cushion",
-                  f"{(savings_balance / loan_amount * 100):.0f}%" if loan_amount else "—")
+        c2.metric("Monthly payment", f"${installment:,.0f}")
+        c3.metric("Payment-to-income", f"{installment_to_income:.1%}")
 
 
 # ────────────────────────────────  MODELS  ────────────────────────────────
@@ -951,7 +987,7 @@ with tab_data:
                 <div class='kpi'>
                     <div class='kpi-label'>Total rows</div>
                     <div class='kpi-value'>{len(df):,}</div>
-                    <div class='kpi-sub'>synthetic, seed=42</div>
+                    <div class='kpi-sub'>Lending Club sample (10k rows)</div>
                 </div>
                 <div class='kpi'>
                     <div class='kpi-label'>Features</div>

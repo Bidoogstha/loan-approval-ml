@@ -21,7 +21,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.data_loader import (  # noqa: E402 
+from src.data_loader import (  # noqa: E402
     CATEGORICAL_FEATURES,
     ENGINEERED_FEATURES,
     NUMERICAL_FEATURES,

@@ -15,8 +15,7 @@ from __future__ import annotations
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
-from .data_generation import NUMERICAL_FEATURES, CATEGORICAL_FEATURES, ENGINEERED_FEATURES
-
+from .data_loader import NUMERICAL_FEATURES, CATEGORICAL_FEATURES, ENGINEERED_FEATURES
 
 def build_preprocessor() -> ColumnTransformer:
     """Build the ColumnTransformer that turns raw features into a model-ready matrix."""

@@ -36,18 +36,18 @@ warnings.filterwarnings("ignore", message=".*does not have valid feature names.*
 warnings.filterwarnings("ignore", category=UserWarning, module="lightgbm")
 warnings.filterwarnings("ignore", category=DataConversionWarning)
 
-from src.data_generation import (
+from src.data_loader import (
     CATEGORICAL_FEATURES,
     ENGINEERED_FEATURES,
     NUMERICAL_FEATURES,
     TARGET,
-    generate_loan_data,
+    load_lending_club,
 )
 from src.evaluation import compute_metrics, find_optimal_threshold, mcnemar_test
 from src.preprocessing import build_preprocessor
 
 SEED = 42
-N_RECORDS = 3_000
+QUICK_TRAIN_SAMPLE = 50_000  # rows to use for fast training (~30 sec)
 TEST_SIZE = 0.20
 
 
@@ -120,14 +120,8 @@ def quick_train(
     data_dir.mkdir(exist_ok=True)
 
     # ── 1. Data ────────────────────────────────────────────────────────────
-    _step(0.05, "Generating synthetic data…")
-    data_path = data_dir / "loan_data.csv"
-    if data_path.exists():
-        df = pd.read_csv(data_path)
-    else:
-        df = generate_loan_data(n=N_RECORDS, seed=SEED)
-        df.to_csv(data_path, index=False)
-
+    _step(0.05, "Loading Lending Club data…")
+    df = load_lending_club(nrows=QUICK_TRAIN_SAMPLE)
     feature_cols = NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES
     X = df[feature_cols]
     y = df[TARGET].values

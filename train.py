@@ -32,12 +32,12 @@ import matplotlib.pyplot as plt
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import train_test_split
 
-from src.data_generation import (
+from src.data_loader import (
     CATEGORICAL_FEATURES,
-    NUMERICAL_FEATURES,
     ENGINEERED_FEATURES,
+    NUMERICAL_FEATURES,
     TARGET,
-    generate_loan_data,
+    load_lending_club,
 )
 from src.preprocessing import build_preprocessor, get_feature_names
 from src.models import tune_model, build_pipeline, build_stacking
@@ -56,7 +56,6 @@ from src.evaluation import (
 # Config
 # --------------------------------------------------------------------------
 SEED = 42
-N_RECORDS = 10_000
 TEST_SIZE = 0.20
 N_TRIALS = 50  # Optuna trials per model — drop to 15-25 for a quick run
 ROOT = Path(__file__).parent
@@ -81,7 +80,7 @@ def main():
         df = pd.read_csv(DATA_PATH)
         print(f"Loaded {DATA_PATH} ({len(df):,} rows)")
     else:
-        df = generate_loan_data(n=N_RECORDS, seed=SEED)
+        df = load_lending_club()
         DATA_PATH.parent.mkdir(exist_ok=True)
         df.to_csv(DATA_PATH, index=False)
         print(f"Generated and saved {len(df):,} rows → {DATA_PATH}")

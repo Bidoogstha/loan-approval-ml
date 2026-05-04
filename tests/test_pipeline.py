@@ -146,3 +146,25 @@ def test_random_forest_trains_and_predicts():
     assert ((proba >= 0) & (proba <= 1)).all(), "Probabilities out of bounds"
     auc = roc_auc_score(y_te, proba)
     assert auc > 0.70, f"AUC {auc:.3f} suspiciously low — pipeline may be broken"
+
+
+def test_lending_club_loader_smoke():
+    """Loader returns expected schema and reasonable default rate."""
+    from src.data_loader import (
+        load_lending_club,
+        NUMERICAL_FEATURES,
+        CATEGORICAL_FEATURES,
+        ENGINEERED_FEATURES,
+        TARGET,
+    )
+    from pathlib import Path
+
+    if not Path("data/raw/accepted_2007_to_2018Q4.csv").exists():
+        import pytest
+        pytest.skip("Lending Club CSV not present — skipping integration test")
+
+    df = load_lending_club(nrows=50_000)
+    expected = NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES + [TARGET]
+    assert list(df.columns) == expected, "Column order/names off"
+    assert 0.10 < df[TARGET].mean() < 0.30, "Default rate out of expected range"
+    assert df.isnull().sum().sum() == 0, "No NaNs should remain after cleaning"

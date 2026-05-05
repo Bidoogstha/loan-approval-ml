@@ -27,6 +27,7 @@ from src.data_loader import (
     CATEGORICAL_FEATURES,
     ENGINEERED_FEATURES,
     NUMERICAL_FEATURES,
+    SENSITIVE_FEATURES,
     TARGET,
     load_lending_club,
 )
@@ -46,7 +47,10 @@ def _load_or_skip(nrows: int = 5000) -> pd.DataFrame:
 
 def test_data_shape_and_schema():
     df = _load_or_skip(nrows=2000)
-    expected_cols = set(NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES + [TARGET])
+    expected_cols = set(
+        NUMERICAL_FEATURES + CATEGORICAL_FEATURES
+        + ENGINEERED_FEATURES + SENSITIVE_FEATURES + [TARGET]
+    )
     assert set(df.columns) == expected_cols
 
 
@@ -165,7 +169,11 @@ def test_lending_club_loader_full_smoke():
     if not CSV_PATH.exists():
         pytest.skip("Lending Club CSV not present")
     df = load_lending_club(nrows=50_000)
-    expected = NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES + [TARGET]
+    expected = (
+        NUMERICAL_FEATURES + CATEGORICAL_FEATURES
+        + ENGINEERED_FEATURES + SENSITIVE_FEATURES + [TARGET]
+    )
     assert list(df.columns) == expected
     assert 0.10 < df[TARGET].mean() < 0.30
+    # SENSITIVE_FEATURES (addr_state, income_bracket) shouldn't be NaN either.
     assert df.isnull().sum().sum() == 0

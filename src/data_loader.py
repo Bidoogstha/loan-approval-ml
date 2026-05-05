@@ -27,6 +27,10 @@ ENGINEERED_FEATURES = [
     "loan_to_income", "installment_to_income",
 ]
 TARGET = "defaulted"
+# Sensitive/protected-attribute proxies for fairness analysis.
+# These are NOT used as model features — they're carried through so we can
+# slice predictions by group at evaluation time.
+SENSITIVE_FEATURES = ["addr_state", "income_bracket"]
 
 # Loans where the outcome is known. Anything else (Current, In Grace Period,
 # Late, Default still in collections) is dropped because the label is uncertain.
@@ -95,7 +99,7 @@ def load_lending_club(
         "loan_amnt", "term", "int_rate", "installment", "annual_inc",
         "dti", "fico_range_low", "open_acc", "revol_util", "total_acc",
         "grade", "home_ownership", "purpose", "verification_status",
-        "emp_length", "loan_status",
+        "emp_length", "loan_status", "addr_state",
     ]
     df = pd.read_csv(path, low_memory=False, nrows=nrows, usecols=raw_cols)
 
@@ -125,8 +129,19 @@ def load_lending_club(
         (df["installment"] * 12) / df["annual_inc"]
     ).round(4)
 
+    # Income bracket — for fairness slicing. Quartiles based on this dataset.
+    # ~25k, 50k, 80k roughly correspond to Q1/Q2/Q3 of US household income.
+    df["income_bracket"] = pd.cut(
+        df["annual_inc"],
+        bins=[0, 40_000, 65_000, 100_000, np.inf],
+        labels=["low", "lower_mid", "upper_mid", "high"],
+    ).astype(str)
+
     # Reorder for consistency.
-    cols = NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES + [TARGET]
+    cols = (
+        NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES
+        + SENSITIVE_FEATURES + [TARGET]
+    )
     df = df[cols].reset_index(drop=True)
 
     # Final sanity: shouldn't be any NaN left in features we expect to be clean.

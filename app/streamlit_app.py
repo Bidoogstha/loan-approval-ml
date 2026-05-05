@@ -487,6 +487,12 @@ def load_artifacts():
     all_pipes = joblib.load(MODELS_DIR / "all_pipelines.pkl")
     with open(MODELS_DIR / "metrics.json") as f:
         metrics = json.load(f)
+    fairness_path = MODELS_DIR / "fairness.json"
+    if fairness_path.exists():
+        with open(fairness_path) as f:
+            fairness = json.load(f)
+    else:
+        fairness = None
     if DATA_PATH.exists():
         df = pd.read_csv(DATA_PATH)
         # The Data tab was originally written for synthetic data labeled "approved".
@@ -496,7 +502,8 @@ def load_artifacts():
         df["approved"] = 1 - df["defaulted"]
     else:
         df = None
-    return {"best_pipe": best_pipe, "all_pipes": all_pipes, "metrics": metrics, "df": df}
+    return {"best_pipe": best_pipe, "all_pipes": all_pipes, "metrics": metrics,
+            "fairness": fairness, "df": df}
 
 
 @st.cache_resource
@@ -543,6 +550,7 @@ if artifacts is None:
 best_pipe = artifacts["best_pipe"]
 all_pipes = artifacts["all_pipes"]
 metrics = artifacts["metrics"]
+fairness = artifacts.get("fairness")
 df = artifacts["df"]
 best_name = metrics["best_model"]
 optimal_thresh = metrics["optimal_threshold"]
@@ -662,7 +670,9 @@ all_probas = {name: pipe.predict_proba(x_input)[0, 1] for name, pipe in all_pipe
 # ══════════════════════════════════════════════════════════════════════════
 # TABS — FIX #3: only Predict, Models, Data (Explain & About removed)
 # ══════════════════════════════════════════════════════════════════════════
-tab_predict, tab_compare, tab_data = st.tabs(["🎯 Predict", "📊 Models", "📈 Data"])
+tab_predict, tab_compare, tab_data, tab_fairness = st.tabs(
+    ["🎯 Predict", "📊 Models", "📈 Data", "⚖️ Fairness"]
+)
 
 # ───────────────────────────────  PREDICT  ────────────────────────────────
 with tab_predict:
@@ -1086,3 +1096,281 @@ with tab_data:
 
         with st.expander("📋 Browse raw data (first 200 rows)"):
             st.dataframe(df.head(200), use_container_width=True)
+
+# ────────────────────────────────  FAIRNESS  ──────────────────────────────
+with tab_fairness:
+    if fairness is None:
+        st.warning(
+            "Fairness audit not yet run. From the project root: `python audit_fairness.py`"
+        )
+    else:
+        # ── Hero card with the headline finding ─────────────────────────────
+        st.markdown(
+            """
+            <div class='hero' style='background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);'>
+                <div class='hero-eyebrow'>FAIRNESS AUDIT</div>
+                <h1 class='hero-title'>Equal performance across groups?</h1>
+                <p class='hero-sub'>
+                Three formal fairness criteria evaluated on the test set across two
+                sensitive attributes (US state and income bracket). Different criteria
+                disagree — by design.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # ── Reorganize the JSON: nested dict {attribute: {metric: report}} ─
+        from collections import defaultdict
+        by_attr = defaultdict(dict)
+        for r in fairness["reports"]:
+            by_attr[r["attribute"]][r["metric_name"]] = r
+
+        # ── Plain-English explainer ─────────────────────────────────────────
+        st.markdown("<div class='section-h'><h3>What we measured & why</h3></div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            """
+            **Why state and income, not race or gender?** The Equal Credit Opportunity
+            Act (ECOA, 1974) prohibits lenders from collecting demographic data on
+            individual applications, so Lending Club's public dataset doesn't include
+            race, gender, or age. Instead we use **US state** as a proxy (state correlates
+            strongly with race and economic class) and **income bracket** as a direct
+            economic measure. This is a well-known approach in disparate-impact
+            analysis — see the 2008 mortgage-discrimination cases where ZIP code
+            functioned as a race proxy.
+
+            **The three metrics below measure different things and are
+            mathematically incompatible** (Pleiss et al., NeurIPS 2017):
+            a model can satisfy at most one or two simultaneously.
+            """
+        )
+
+        # ── Helper to render one attribute's row of three metric cards ─────
+        def _badge(passed: bool) -> str:
+            if passed:
+                return "<span style='background:#10B981;color:white;padding:2px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;'>PASS</span>"
+            return "<span style='background:#EF4444;color:white;padding:2px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;'>FAIL</span>"
+
+        def _format_disparity(rep: dict) -> str:
+            d = rep.get("disparity")
+            if d is None:
+                return "—"
+            return f"{d:.3f}"
+
+        # ════════════════════════════════════════════════════════════════════
+        # SECTION 1: Demographic Parity
+        # ════════════════════════════════════════════════════════════════════
+        st.markdown(
+            "<div class='section-h'><h3>1 · Demographic parity (equal selection rate)</h3></div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Does the model approve loans at the same rate across groups? "
+            "Origin: Disparate Impact doctrine (Griggs v. Duke Power, 1971; "
+            "EEOC's four-fifths rule, 1978)."
+        )
+
+        for attr_label, attr_key in [("By US state", "addr_state"),
+                                      ("By income bracket", "income_bracket")]:
+            rep = by_attr.get(attr_key, {}).get("demographic_parity")
+            if not rep or not rep["groups"]:
+                continue
+
+            col_chart, col_summary = st.columns([3, 1])
+            with col_chart:
+                gdf = pd.DataFrame(rep["groups"]).sort_values("selection_rate")
+                fig = go.Figure(go.Bar(
+                    x=gdf["selection_rate"], y=gdf["group"],
+                    orientation="h",
+                    marker_color=PALETTE["primary"],
+                    hovertemplate="<b>%{y}</b><br>Selection rate: %{x:.1%}<br>n=%{customdata:,}<extra></extra>",
+                    customdata=gdf["n"],
+                    name="Selection rate",
+                ))
+                fig.update_layout(
+                    title=f"{attr_label}: rate at which model approves loans",
+                    xaxis_title="Selection rate", yaxis_title="",
+                    height=max(300, 18 * len(gdf)),
+                    margin=dict(l=80, r=20, t=50, b=50),
+                    xaxis=dict(tickformat=".0%"),
+                )
+                fig = apply_theme(fig)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+            with col_summary:
+                st.markdown(
+                    f"""
+                    <div style='padding: 14px; border-radius: 12px; background: var(--bg-soft); border: 1px solid var(--border);'>
+                        <div style='font-size: 0.7rem; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px;'>
+                            {attr_label}
+                        </div>
+                        <div style='font-size: 1.5rem; font-weight: 700; margin-bottom: 4px;'>{_format_disparity(rep)}</div>
+                        <div style='font-size: 0.8rem; color: var(--muted); margin-bottom: 10px;'>disparity (max - min)</div>
+                        {_badge(rep["four_fifths_pass"])}
+                        <div style='font-size: 0.75rem; color: var(--muted); margin-top: 10px;'>{rep["notes"]}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        # ════════════════════════════════════════════════════════════════════
+        # SECTION 2: Equalized Odds
+        # ════════════════════════════════════════════════════════════════════
+        st.markdown(
+            "<div class='section-h'><h3>2 · Equalized odds (equal error rates)</h3></div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Among people who actually defaulted, does the model catch them at "
+            "the same rate across groups (TPR)? And among people who paid back, "
+            "does it falsely flag them at the same rate (FPR)? "
+            "Origin: Hardt, Price, Srebro, NeurIPS 2016 — arxiv.org/abs/1610.02413"
+        )
+
+        for attr_label, attr_key in [("By US state", "addr_state"),
+                                      ("By income bracket", "income_bracket")]:
+            rep = by_attr.get(attr_key, {}).get("equalized_odds")
+            if not rep or not rep["groups"]:
+                continue
+
+            col_chart, col_summary = st.columns([3, 1])
+            with col_chart:
+                gdf = pd.DataFrame(rep["groups"]).sort_values("tpr")
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=gdf["tpr"], y=gdf["group"], orientation="h",
+                    marker_color=PALETTE["danger"], opacity=0.85,
+                    name="TPR (recall on defaulters)",
+                    hovertemplate="<b>%{y}</b><br>TPR: %{x:.1%}<extra>Recall on defaulters</extra>",
+                ))
+                fig.add_trace(go.Bar(
+                    x=gdf["fpr"], y=gdf["group"], orientation="h",
+                    marker_color=PALETTE["warning"], opacity=0.85,
+                    name="FPR (false alarms)",
+                    hovertemplate="<b>%{y}</b><br>FPR: %{x:.1%}<extra>False positive rate</extra>",
+                ))
+                fig.update_layout(
+                    title=f"{attr_label}: TPR & FPR by group",
+                    xaxis_title="Rate", yaxis_title="",
+                    height=max(300, 18 * len(gdf)),
+                    barmode="group",
+                    margin=dict(l=80, r=20, t=50, b=50),
+                    xaxis=dict(tickformat=".0%"),
+                    legend=dict(yanchor="top", y=1.02, xanchor="right", x=1),
+                )
+                fig = apply_theme(fig)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+            with col_summary:
+                st.markdown(
+                    f"""
+                    <div style='padding: 14px; border-radius: 12px; background: var(--bg-soft); border: 1px solid var(--border);'>
+                        <div style='font-size: 0.7rem; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px;'>
+                            {attr_label}
+                        </div>
+                        <div style='font-size: 1.5rem; font-weight: 700; margin-bottom: 4px;'>{_format_disparity(rep)}</div>
+                        <div style='font-size: 0.8rem; color: var(--muted); margin-bottom: 10px;'>max(TPR gap, FPR gap)</div>
+                        {_badge(rep["four_fifths_pass"])}
+                        <div style='font-size: 0.75rem; color: var(--muted); margin-top: 10px;'>{rep["notes"]}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        # ════════════════════════════════════════════════════════════════════
+        # SECTION 3: Calibration by group
+        # ════════════════════════════════════════════════════════════════════
+        st.markdown(
+            "<div class='section-h'><h3>3 · Calibration by group (probabilities you can trust)</h3></div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "When the model predicts '20% chance of default' for a group, is it "
+            "actually 20% in that group? Origin: Kleinberg, Mullainathan, "
+            "Raghavan, ITCS 2017 — arxiv.org/abs/1609.05807"
+        )
+
+        for attr_label, attr_key in [("By US state", "addr_state"),
+                                      ("By income bracket", "income_bracket")]:
+            rep = by_attr.get(attr_key, {}).get("calibration_by_group")
+            if not rep or not rep["groups"]:
+                continue
+
+            col_chart, col_summary = st.columns([3, 1])
+            with col_chart:
+                gdf = pd.DataFrame(rep["groups"])
+                fig = go.Figure()
+                # Diagonal = perfect calibration
+                lim = max(gdf["mean_predicted_proba"].max(), gdf["base_rate"].max()) * 1.10
+                fig.add_trace(go.Scatter(
+                    x=[0, lim], y=[0, lim],
+                    mode="lines", name="Perfect calibration",
+                    line=dict(color=PALETTE["muted"], dash="dash", width=1.5),
+                    hovertemplate="Perfect calibration line<extra></extra>",
+                ))
+                fig.add_trace(go.Scatter(
+                    x=gdf["mean_predicted_proba"], y=gdf["base_rate"],
+                    mode="markers+text",
+                    text=gdf["group"], textposition="top center",
+                    marker=dict(size=10, color=PALETTE["primary"]),
+                    name="Group",
+                    hovertemplate="<b>%{text}</b><br>Predicted: %{x:.1%}<br>Actual: %{y:.1%}<extra></extra>",
+                ))
+                fig.update_layout(
+                    title=f"{attr_label}: predicted vs. actual default rate",
+                    xaxis_title="Mean predicted default probability",
+                    yaxis_title="Actual default rate",
+                    height=420,
+                    margin=dict(l=70, r=20, t=50, b=50),
+                    xaxis=dict(tickformat=".0%"),
+                    yaxis=dict(tickformat=".0%"),
+                )
+                fig = apply_theme(fig)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+            with col_summary:
+                st.markdown(
+                    f"""
+                    <div style='padding: 14px; border-radius: 12px; background: var(--bg-soft); border: 1px solid var(--border);'>
+                        <div style='font-size: 0.7rem; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px;'>
+                            {attr_label}
+                        </div>
+                        <div style='font-size: 1.5rem; font-weight: 700; margin-bottom: 4px;'>{_format_disparity(rep)}</div>
+                        <div style='font-size: 0.8rem; color: var(--muted); margin-bottom: 10px;'>max |predicted - actual|</div>
+                        {_badge(rep["four_fifths_pass"])}
+                        <div style='font-size: 0.75rem; color: var(--muted); margin-top: 10px;'>{rep["notes"]}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        # ── Final: limitations & references ─────────────────────────────────
+        st.markdown(
+            "<div class='section-h'><h3>Limitations & references</h3></div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            """
+            **Limitations:**
+            - Race, gender, and age are not directly tested — they don't appear in
+              the dataset (per ECOA).
+            - State and income are imperfect proxies for protected attributes.
+              Conclusions about systemic bias should be drawn cautiously.
+            - The audit uses the model's default 0.50 threshold. Toggling the
+              cost-optimal threshold would shift these numbers — usually toward
+              higher TPR and worse demographic parity.
+            - Tiny states (<100 test loans) are excluded as statistically noisy.
+
+            **References:**
+            - Hardt, M., Price, E., Srebro, N. (2016). *Equality of Opportunity
+              in Supervised Learning.* NeurIPS. arxiv.org/abs/1610.02413
+            - Kleinberg, J., Mullainathan, S., Raghavan, M. (2017). *Inherent
+              Trade-Offs in the Fair Determination of Risk Scores.* ITCS.
+              arxiv.org/abs/1609.05807
+            - Pleiss, G., Raghavan, M., Wu, F., Kleinberg, J., Weinberger, K.
+              (2017). *On Fairness and Calibration.* NeurIPS. arxiv.org/abs/1709.02012
+            - U.S. EEOC (1978). *Uniform Guidelines on Employee Selection
+              Procedures.* (Source of the four-fifths rule.)
+            """
+        )

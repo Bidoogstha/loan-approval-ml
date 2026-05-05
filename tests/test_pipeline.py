@@ -177,3 +177,54 @@ def test_lending_club_loader_full_smoke():
     assert 0.10 < df[TARGET].mean() < 0.30
     # SENSITIVE_FEATURES (addr_state, income_bracket) shouldn't be NaN either.
     assert df.isnull().sum().sum() == 0
+
+# ─── Fairness ─────────────────────────────────────────────────────────────
+
+def test_fairness_demographic_parity_obvious_disparity():
+    """Construct a toy case with clear group disparity; metric should detect it."""
+    from src.fairness import demographic_parity
+    # Group A: 200 people, all predicted "approved" (pred=0)
+    # Group B: 200 people, all predicted "denied" (pred=1)
+    # Selection rates 1.0 and 0.0 → disparity 1.0.
+    y_pred = np.array([0]*200 + [1]*200)
+    sensitive = pd.Series(["A"]*200 + ["B"]*200)
+    rep = demographic_parity(y_pred, sensitive, "toy")
+    assert rep.disparity > 0.95, f"Expected near-1 disparity, got {rep.disparity}"
+    assert rep.four_fifths_pass is False
+
+
+def test_fairness_demographic_parity_no_disparity():
+    """Identical groups → near-zero disparity."""
+    from src.fairness import demographic_parity
+    rng = np.random.default_rng(0)
+    y_pred = rng.integers(0, 2, size=1000)
+    sensitive = pd.Series(["A"]*500 + ["B"]*500)
+    rep = demographic_parity(y_pred, sensitive, "toy")
+    assert rep.disparity < 0.10
+    assert rep.four_fifths_pass is True
+
+
+def test_fairness_calibration_detects_miscalibration():
+    """Group A: predict 0.5, actual 0.5 (calibrated). Group B: predict 0.5, actual 0.9."""
+    from src.fairness import calibration_by_group
+    rng = np.random.default_rng(0)
+    n = 500
+    y_a = rng.binomial(1, 0.5, n)
+    y_b = rng.binomial(1, 0.9, n)
+    p_a = np.full(n, 0.5)
+    p_b = np.full(n, 0.5)
+    y_true = np.concatenate([y_a, y_b])
+    y_proba = np.concatenate([p_a, p_b])
+    sensitive = pd.Series(["A"]*n + ["B"]*n)
+    rep = calibration_by_group(y_true, y_proba, sensitive, "toy")
+    assert rep.disparity > 0.20, f"Should detect ~0.4 miscalibration, got {rep.disparity}"
+
+
+def test_fairness_skips_tiny_groups():
+    """Groups smaller than min_group_size are excluded."""
+    from src.fairness import demographic_parity
+    y_pred = np.array([0]*5 + [1]*200)  # group A is tiny (only 5)
+    sensitive = pd.Series(["A"]*5 + ["B"]*200)
+    rep = demographic_parity(y_pred, sensitive, "toy", min_group_size=50)
+    # Only group B remains → fewer than 2 groups → skipped.
+    assert "skipped" in rep.notes.lower()

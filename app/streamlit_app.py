@@ -563,13 +563,46 @@ st.markdown(
     """
     <div class='hero'>
         <h1>🏦 Loan Approval ML</h1>
-        <p>Build a binary classification model from start to finish, compare different models, check how well their predicted probabilities match reality (calibration), 
-        and use SHAP to explain the predictions. You can tweak the applicant inputs and see the prediction update instantly. Adjust the inputs and the prediction updates live.</p>
+        <p>Build a binary classification model from start to finish, compare different models, check how well their predicted probabilities match reality (calibration), and use SHAP to explain the predictions. Open the Predict tab and use the What-if explorer to drag inputs and watch the prediction update live.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+# ══════════════════════════════════════════════════════════════════════════
+# WHAT-IF EXPLORER — preset scenarios
+# ══════════════════════════════════════════════════════════════════════════
+PRESETS = {
+    "median": {
+        "loan_amnt": 15000, "term_months": 36, "int_rate": 13.0, "grade": "C",
+        "fico_range_low": 695, "dti": 18.0, "revol_util": 50.0,
+        "open_acc": 10, "total_acc": 25,
+        "annual_inc": 65000, "emp_length": "5",
+        "home_ownership": "MORTGAGE", "verification_status": "Source Verified",
+        "purpose": "debt_consolidation",
+    },
+    "borderline": {
+        "loan_amnt": 25000, "term_months": 60, "int_rate": 17.0, "grade": "D",
+        "fico_range_low": 670, "dti": 28.0, "revol_util": 75.0,
+        "open_acc": 8, "total_acc": 18,
+        "annual_inc": 45000, "emp_length": "2",
+        "home_ownership": "RENT", "verification_status": "Not Verified",
+        "purpose": "debt_consolidation",
+    },
+    "strong": {
+        "loan_amnt": 10000, "term_months": 36, "int_rate": 7.5, "grade": "A",
+        "fico_range_low": 780, "dti": 8.0, "revol_util": 15.0,
+        "open_acc": 12, "total_acc": 35,
+        "annual_inc": 120000, "emp_length": "10_plus",
+        "home_ownership": "MORTGAGE", "verification_status": "Verified",
+        "purpose": "credit_card",
+    },
+}
+
+# Seed session state with the median defaults — only on first load.
+for _key, _val in PRESETS["median"].items():
+    if _key not in st.session_state:
+        st.session_state[_key] = _val
 
 # ══════════════════════════════════════════════════════════════════════════
 # INPUT PANEL — FIX #2: inputs moved from sidebar to main page
@@ -582,42 +615,55 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+preset_a, preset_b, preset_c, _spacer = st.columns([1, 1, 1, 2], gap="small")
+with preset_a:
+    if st.button("📊 Median applicant", use_container_width=True):
+        st.session_state.update(PRESETS["median"])
+        st.rerun()
+with preset_b:
+    if st.button("⚠️ Borderline case", use_container_width=True):
+        st.session_state.update(PRESETS["borderline"])
+        st.rerun()
+with preset_c:
+    if st.button("✅ Strong applicant", use_container_width=True):
+        st.session_state.update(PRESETS["strong"])
+        st.rerun()
+st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+
 col_loan, col_credit, col_borrower = st.columns(3, gap="large")
 
 with col_loan:
     st.markdown("<div class='input-section-label'>💰 Loan terms</div>", unsafe_allow_html=True)
-    loan_amnt = st.slider("Loan amount ($)", 1_000, 40_000, 15_000, step=500, format="$%d")
-    term_months = st.selectbox("Term", [36, 60], index=0, format_func=lambda x: f"{x} months")
-    int_rate = st.slider("Interest rate (%)", 5.0, 31.0, 13.0, step=0.25, format="%.2f%%")
-    grade = st.selectbox("LC risk grade", ["A", "B", "C", "D", "E", "F", "G"], index=2)
-
+    loan_amnt = st.slider("Loan amount ($)", 1_000, 40_000, key="loan_amnt", step=500, format="$%d")
+    term_months = st.selectbox("Term", [36, 60], key="term_months", format_func=lambda x: f"{x} months")
+    int_rate = st.slider("Interest rate (%)", 5.0, 31.0, key="int_rate", step=0.25, format="%.2f%%")
+    grade = st.selectbox("LC risk grade", ["A", "B", "C", "D", "E", "F", "G"], key="grade")
 with col_credit:
     st.markdown("<div class='input-section-label'>📊 Credit profile</div>", unsafe_allow_html=True)
-    fico_range_low = st.slider("FICO score (low end)", 660, 845, 695, step=5)
-    dti = st.slider("Debt-to-income (%)", 0.0, 50.0, 18.0, step=0.5, format="%.1f%%")
-    revol_util = st.slider("Revolving utilization (%)", 0.0, 150.0, 50.0, step=1.0, format="%.0f%%")
-    open_acc = st.slider("Open credit lines", 0, 40, 10)
-    total_acc = st.slider("Total credit lines (lifetime)", 1, 80, 25)
+    fico_range_low = st.slider("FICO score (low end)", 660, 845, key="fico_range_low", step=5)
+    dti = st.slider("Debt-to-income (%)", 0.0, 50.0, key="dti", step=0.5, format="%.1f%%")
+    revol_util = st.slider("Revolving utilization (%)", 0.0, 150.0, key="revol_util", step=1.0, format="%.0f%%")
+    open_acc = st.slider("Open credit lines", 0, 40, key="open_acc")
+    total_acc = st.slider("Total credit lines (lifetime)", 1, 80, key="total_acc")
     use_optimal_thresh = st.toggle(
         "Use cost-optimal threshold",
         value=False,
         help=f"Default 0.50 vs. cost-optimal {optimal_thresh:.2f} (FN penalized 3× FP).",
     )
-
 with col_borrower:
     st.markdown("<div class='input-section-label'>👤 Borrower</div>", unsafe_allow_html=True)
-    annual_inc = st.slider("Annual income ($)", 15_000, 250_000, 65_000, step=1_000, format="$%d")
+    annual_inc = st.slider("Annual income ($)", 15_000, 250_000, key="annual_inc", step=1_000, format="$%d")
     emp_length = st.selectbox(
         "Employment length",
         ["lt_1", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10_plus", "unknown"],
-        index=10,
+        key="emp_length",
         format_func=lambda x: {"lt_1": "< 1 year", "10_plus": "10+ years", "unknown": "Not provided"}.get(x, f"{x} years"),
     )
-    home_ownership = st.selectbox("Home ownership", ["RENT", "MORTGAGE", "OWN", "OTHER"], index=1)
+    home_ownership = st.selectbox("Home ownership", ["RENT", "MORTGAGE", "OWN", "OTHER"], key="home_ownership")
     verification_status = st.selectbox(
         "Income verification",
         ["Verified", "Source Verified", "Not Verified"],
-        index=0,
+        key="verification_status",
     )
     purpose = st.selectbox(
         "Loan purpose",
@@ -626,7 +672,7 @@ with col_borrower:
             "medical", "small_business", "car", "vacation", "moving",
             "house", "wedding", "renewable_energy", "educational", "other",
         ],
-        index=0,
+        key="purpose",
     )
 
 # Auto-compute installment from loan amount, rate, and term using standard
@@ -663,7 +709,16 @@ def build_input_row():
 x_input = build_input_row()
 threshold = optimal_thresh if use_optimal_thresh else 0.50
 proba = best_pipe.predict_proba(x_input)[0, 1]
-prediction = int(proba >= threshold)
+
+# What-if explorer: track previous probability to show a delta on next render.
+prev_proba = st.session_state.get("prev_proba")
+delta_proba = (proba - prev_proba) if prev_proba is not None else None
+st.session_state["prev_proba"] = proba
+
+# proba = probability of default (the bad outcome).
+# Approve when default probability is BELOW threshold.
+prediction = int(proba < threshold)
+
 all_probas = {name: pipe.predict_proba(x_input)[0, 1] for name, pipe in all_pipes.items()}
 
 
@@ -679,12 +734,12 @@ with tab_predict:
     left, right = st.columns([1, 1], gap="large")
 
     with left:
+        # proba = default probability. Low = good (green), high = bad (red).
         gauge_color = (
-            PALETTE["success"] if proba >= 0.70
-            else PALETTE["warning"] if proba >= 0.50
+            PALETTE["success"] if proba < 0.30
+            else PALETTE["warning"] if proba < 0.50
             else PALETTE["danger"]
         )
-
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=proba * 100,
@@ -696,9 +751,9 @@ with tab_predict:
                 "bgcolor": "rgba(0,0,0,0)",
                 "borderwidth": 0,
                 "steps": [
-                    {"range": [0, 50], "color": "rgba(239, 68, 68, 0.10)"},
-                    {"range": [50, 70], "color": "rgba(245, 158, 11, 0.10)"},
-                    {"range": [70, 100], "color": "rgba(16, 185, 129, 0.10)"},
+                    {"range": [0, 30], "color": "rgba(16, 185, 129, 0.10)"},
+                    {"range": [30, 50], "color": "rgba(245, 158, 11, 0.10)"},
+                    {"range": [50, 100], "color": "rgba(239, 68, 68, 0.10)"},
                 ],
                 "threshold": {"line": {"color": PALETTE["ink"], "width": 3},
                               "thickness": 0.85, "value": threshold * 100},
@@ -711,25 +766,43 @@ with tab_predict:
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+        # prediction == 1 means APPROVED (default proba below threshold).
+        # Within approved, mark applicants in the 30–50% default-risk band as borderline.
         if prediction == 1:
-            if proba >= 0.7:
+            if proba < 0.30:
                 card_class, pill_class, icon, text = "approved", "pill-good", "✓", "APPROVED"
             else:
                 card_class, pill_class, icon, text = "borderline", "pill-warn", "✓", "APPROVED · BORDERLINE"
         else:
             card_class, pill_class, icon, text = "denied", "pill-bad", "✕", "DENIED"
 
+            # Delta badge: only show after the user has changed an input at least once,
+            # and only when the change is ≥ 0.05pp to filter out tiny float jitter.
+        if delta_proba is not None and abs(delta_proba) >= 0.0005:
+            # Show change in APPROVAL likelihood (= 1 - default probability),
+            # so up arrow + green = better outcome, matching user intuition.
+            approval_delta_pp = -delta_proba * 100
+            delta_color = "var(--success)" if approval_delta_pp > 0 else "var(--danger)"
+            delta_arrow = "↑" if approval_delta_pp > 0 else "↓"
+            delta_html = (
+                f"&nbsp;·&nbsp; <span style='color: {delta_color}; font-feature-settings: \"tnum\"; font-weight: 600;'>"
+                f"{delta_arrow} {abs(approval_delta_pp):.1f}pp approval likelihood</span>"
+            )
+        else:
+            delta_html = ""
+
         st.markdown(
             f"""
-            <div class='decision-card {card_class}'>
-                <div class='decision-label'>Decision · threshold {threshold:.2f}</div>
-                <div class='decision-pill {pill_class}'>{icon} {text}</div>
-                <div style='margin-top: 12px; font-size: 0.85rem; color: var(--muted);'>
-                    Probability: <strong style='color: var(--ink); font-feature-settings: "tnum";'>{proba:.1%}</strong>
-                    &nbsp;·&nbsp; Margin: <strong style='color: var(--ink); font-feature-settings: "tnum";'>{(proba - threshold)*100:+.1f}pp</strong>
+                <div class='decision-card {card_class}'>
+                    <div class='decision-label'>Decision · threshold {threshold:.2f}</div>
+                    <div class='decision-pill {pill_class}'>{icon} {text}</div>
+                    <div style='margin-top: 12px; font-size: 0.85rem; color: var(--muted);'>
+                        Default risk: <strong style='color: var(--ink); font-feature-settings: "tnum";'>{proba:.1%}</strong>
+                        &nbsp;·&nbsp; Margin: <strong style='color: var(--ink); font-feature-settings: "tnum";'>{(proba - threshold) * 100:+.1f}pp</strong>
+                        {delta_html}
+                    </div>
                 </div>
-            </div>
-            """,
+                """,
             unsafe_allow_html=True,
         )
 

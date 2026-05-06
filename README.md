@@ -4,7 +4,7 @@ A binary classification system for loan default prediction on real Lending Club 
 
 **[Live demo →](https://loan-approval-ml-bidoog.streamlit.app/)**
 
-![Hero screenshot](images:hero.png)
+![Hero screenshot](hero.png)
 
 ---
 
@@ -23,13 +23,13 @@ This is a portfolio piece, but I tried to build it the way a real lending team w
 
 Try the deployed app: **https://loan-approval-ml-bidoog.streamlit.app/**
 
-![What-if explorer](images:whatif_explorer.png)
+![What-if explorer](whatif_explorer.png)
 *Three preset scenarios snap the inputs to demonstrate dramatic differences in predicted default risk. Drag any slider to see the prediction update live, with a delta badge showing the change in approval likelihood.*
 
-![SHAP waterfall](images:shap_waterfall.png)
+![SHAP waterfall](shap_waterfall.png)
 *Per-applicant SHAP waterfall showing which features pushed the prediction up or down from the model's base rate.*
 
-![Fairness audit](images:fairness_chart.png)
+![Fairness audit](fairness_chart.png)
 *Per-state breakdown of selection rates, with the four-fifths-rule threshold marked.*
 
 ---

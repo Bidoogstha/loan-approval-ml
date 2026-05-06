@@ -36,3 +36,4 @@ models/*.joblib
 # Streamlit
 .streamlit/secrets.toml
 data/raw/
+data/loan_data.csv

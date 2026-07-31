@@ -94,12 +94,23 @@ def main():
     y = df[TARGET].values
 
     # ------------------------------------------------------------- SPLIT
-    _section("2. Train/test split (stratified, 80/20)")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=SEED, stratify=y
-    )
-    print(f"Train: {len(X_train):,}  ({y_train.mean():.1%} approved)")
-    print(f"Test : {len(X_test):,}  ({y_test.mean():.1%} approved)")
+    _section("2. Train/test split (temporal, 80/20 by issue date)")
+    df_sorted = df.sort_values("issue_d").reset_index(drop=True)
+    cutoff_idx = int(len(df_sorted) * (1 - TEST_SIZE))
+    train_df = df_sorted.iloc[:cutoff_idx]
+    test_df = df_sorted.iloc[cutoff_idx:]
+
+    X_train = train_df[feature_cols]
+    X_test = test_df[feature_cols]
+    y_train = train_df[TARGET].values
+    y_test = test_df[TARGET].values
+
+    print(f"Train: {len(X_train):,} loans, issued "
+          f"{train_df['issue_d'].min().date()} to {train_df['issue_d'].max().date()} "
+          f"({y_train.mean():.1%} default rate)")
+    print(f"Test : {len(X_test):,} loans, issued "
+          f"{test_df['issue_d'].min().date()} to {test_df['issue_d'].max().date()} "
+          f"({y_test.mean():.1%} default rate)")
 
     # ------------------------------------------------------ PREPROCESSOR
     preprocessor = build_preprocessor()

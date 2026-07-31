@@ -141,7 +141,7 @@ def load_lending_club(
     # Reorder for consistency.
     cols = (
         NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES
-        + SENSITIVE_FEATURES + [TARGET]
+        + SENSITIVE_FEATURES + TEMPORAL_FEATURES + [TARGET]
     )
     df = df[cols].reset_index(drop=True)
 

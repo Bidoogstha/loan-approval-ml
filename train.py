@@ -30,7 +30,6 @@ import pandas as pd
 import shap
 import matplotlib.pyplot as plt
 from sklearn.inspection import permutation_importance
-from sklearn.model_selection import train_test_split
 
 from src.data_loader import (
     CATEGORICAL_FEATURES,

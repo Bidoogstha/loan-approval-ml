@@ -85,7 +85,7 @@ def main():
         df.to_csv(DATA_PATH, index=False)
         print(f"Generated and saved {len(df):,} rows → {DATA_PATH}")
 
-    print(f"Approval rate: {df[TARGET].mean():.1%}")
+    print(f"Default rate: {df[TARGET].mean():.1%}")
     print(f"Class distribution:\n{df[TARGET].value_counts().to_string()}")
 
     feature_cols = NUMERICAL_FEATURES + CATEGORICAL_FEATURES + ENGINEERED_FEATURES

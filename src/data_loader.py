@@ -102,6 +102,7 @@ def load_lending_club(
         "emp_length", "loan_status", "addr_state", "issue_d",
     ]
     df = pd.read_csv(path, low_memory=False, nrows=nrows, usecols=raw_cols)
+    df["issue_d"] = pd.to_datetime(df["issue_d"], format="%b-%Y")
 
     # Filter to known-outcome loans only.
     df = df[df["loan_status"].isin(KEEP_STATUSES)].copy()

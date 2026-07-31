@@ -99,7 +99,7 @@ def load_lending_club(
         "loan_amnt", "term", "int_rate", "installment", "annual_inc",
         "dti", "fico_range_low", "open_acc", "revol_util", "total_acc",
         "grade", "home_ownership", "purpose", "verification_status",
-        "emp_length", "loan_status", "addr_state",
+        "emp_length", "loan_status", "addr_state", "issue_d",
     ]
     df = pd.read_csv(path, low_memory=False, nrows=nrows, usecols=raw_cols)
 

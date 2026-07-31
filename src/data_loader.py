@@ -31,7 +31,7 @@ TARGET = "defaulted"
 # These are NOT used as model features — they're carried through so we can
 # slice predictions by group at evaluation time.
 SENSITIVE_FEATURES = ["addr_state", "income_bracket"]
-
+TEMPORAL_FEATURES = ["issue_d"]
 # Loans where the outcome is known. Anything else (Current, In Grace Period,
 # Late, Default still in collections) is dropped because the label is uncertain.
 KEEP_STATUSES = ["Fully Paid", "Charged Off"]
